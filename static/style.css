@@ -1,0 +1,49 @@
+/* Custom styles for range slider */
+input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+    background: #d7dcdf;
+    outline: none;
+    padding: 0;
+    margin: 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #4f46e5;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    background: #4338ca;
+    transform: scale(1.1);
+}
+
+/* Preview container styles */
+#originalPreview, #compressedPreview {
+    border: 2px dashed #e5e7eb;
+    overflow: hidden;
+}
+
+/* File input hover effects */
+label:hover {
+    background-color: #f9fafb;
+    border-color: #6366f1;
+}
+
+/* Progress animation */
+@keyframes progress {
+    0% { width: 0; }
+    100% { width: 100%; }
+}
+
+.progress-bar {
+    animation: progress 2s ease-in-out;
+}
