@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>在线工具集 - 图片压缩</title>
+    <title>MaogeToolbox - 在线工具集</title>
     <link href="{{ url_for('static', filename='main.css') }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gradient">
     <header class="header">
         <nav class="nav-container">
-            <div class="logo">工具集</div>
+            <div class="logo">MaogeToolbox</div>
             <div class="nav-links">
-                <a href="#" class="active">图片压缩</a>
+                <a href="/" class="active">图片压缩</a>
+                <a href="/qr">二维码生成</a>
                 <a href="#" class="disabled">更多工具</a>
             </div>
         </nav>
@@ -21,10 +22,11 @@
     <main class="main-container">
         <div class="tool-container">
             <div class="tool-header">
-                <h1>图片压缩工具</h1>
+                <h1>图片压缩</h1>
                 <p class="subtitle">支持 JPG、PNG、GIF 格式 | 最大 16MB</p>
             </div>
 
+            <!-- 上传区域 -->
             <div class="upload-area" id="uploadArea">
                 <input type="file" id="fileInput" accept="image/*" multiple class="file-input" />
                 <div class="upload-content" id="uploadContent">
@@ -57,6 +59,7 @@
                 </div>
             </div>
 
+            <!-- 压缩设置 -->
             <div class="settings-container">
                 <div class="setting-group">
                     <label class="setting-label">压缩方式</label>
@@ -81,6 +84,12 @@
                 </div>
             </div>
 
+            <!-- 压缩按钮 -->
+            <button id="compressButton" class="compress-button" disabled>
+                开始压缩
+            </button>
+
+            <!-- 预览区域 -->
             <div class="preview-container hidden" id="previewSection">
                 <div class="preview-box">
                     <div class="preview-header">原始图片</div>
@@ -94,10 +103,7 @@
                 </div>
             </div>
 
-            <button id="compressButton" class="compress-button" disabled>
-                开始压缩
-            </button>
-
+            <!-- 下载区域 -->
             <div id="downloadSection" class="download-section hidden">
                 <div class="download-info">
                     <div class="compression-stats">
@@ -121,6 +127,7 @@
                 </button>
             </div>
 
+            <!-- 批量处理进度 -->
             <div id="batchProgress" class="batch-progress hidden">
                 <h3 class="batch-title">处理进度</h3>
                 <div id="progressList" class="progress-list"></div>
@@ -129,7 +136,7 @@
     </main>
 
     <footer class="footer">
-        <p> 2025 在线工具集 | <a href="#" class="footer-link">关于</a> | <a href="#" class="footer-link">联系我们</a></p>
+        <p> 2025 MaogeToolbox | <a href="#" class="footer-link">关于</a> | <a href="#" class="footer-link">联系我们</a></p>
     </footer>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

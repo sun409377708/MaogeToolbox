@@ -1,8 +1,18 @@
 import os
+import socket
+import logging
 from flask import Flask, render_template, request, jsonify, send_file
-from PIL import Image
+from PIL import Image, ImageDraw
 import io
 from werkzeug.utils import secure_filename
+import qrcode
+from qrcode.image.styles.moduledrawers import RoundedModuleDrawer, CircleModuleDrawer
+from qrcode.image.styles.colormasks import RadialGradiantColorMask, SolidFillColorMask
+import sys
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -12,6 +22,20 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+    logger.info(f"Created upload directory: {app.config['UPLOAD_FOLDER']}")
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
+
+def find_available_port(start_port=5000, max_port=5100):
+    """查找可用端口，从start_port开始，最大尝试到max_port"""
+    port = start_port
+    while port <= max_port:
+        if not is_port_in_use(port):
+            return port
+        port += 1
+    raise RuntimeError(f"No available ports found between {start_port} and {max_port}")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -109,16 +133,109 @@ def compress_image(image, compression_type, quality):
 def index():
     return render_template('index.html')
 
+@app.route('/qr')
+def qr_page():
+    return render_template('qr.html')
+
+@app.route('/api/generate-qr', methods=['POST'])
+def generate_qr():
+    try:
+        content = request.form.get('content')
+        style = request.form.get('style', 'square')
+        logo = request.files.get('logo')
+
+        if not content:
+            return jsonify({'error': '请输入内容'}), 400
+
+        # 创建QR码，使用最高纠错级别
+        qr = qrcode.QRCode(
+            version=None,  # 自动选择最小尺寸
+            error_correction=qrcode.constants.ERROR_CORRECT_H,  # 最高纠错级别
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(content)
+        qr.make(fit=True)
+
+        # 设置样式
+        if style == 'rounded':
+            qr_image = qr.make_image(image_factory=qrcode.image.PilImage,
+                                   module_drawer=RoundedModuleDrawer())
+        elif style == 'circle':
+            qr_image = qr.make_image(image_factory=qrcode.image.PilImage,
+                                   module_drawer=CircleModuleDrawer())
+        else:
+            qr_image = qr.make_image(fill_color="black", back_color="white")
+
+        # 如果上传了logo，添加到二维码中心
+        if logo and allowed_file(logo.filename):
+            # 打开logo图片
+            logo_image = Image.open(logo)
+            
+            # 计算合适的logo大小（二维码大小的15%）
+            logo_size = int(qr_image.size[0] * 0.15)
+            logo_image = logo_image.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+            
+            # 计算logo放置位置（居中）
+            pos = ((qr_image.size[0] - logo_size) // 2,
+                  (qr_image.size[1] - logo_size) // 2)
+            
+            # 创建圆形蒙版
+            mask = Image.new('L', (logo_size, logo_size), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, logo_size, logo_size), fill=255)
+            
+            # 确保二维码图片是RGBA模式
+            qr_image = qr_image.convert('RGBA')
+            
+            # 创建一个新图层用于logo
+            logo_layer = Image.new('RGBA', qr_image.size, (0, 0, 0, 0))
+            
+            # 将logo粘贴到新图层上
+            if logo_image.mode == 'RGBA':
+                logo_layer.paste(logo_image, pos, mask=logo_image.split()[3])
+            else:
+                logo_layer.paste(logo_image, pos, mask=mask)
+            
+            # 在logo周围添加白色背景
+            bg_size = int(logo_size * 1.1)
+            bg_pos = ((qr_image.size[0] - bg_size) // 2,
+                     (qr_image.size[1] - bg_size) // 2)
+            bg_layer = Image.new('RGBA', qr_image.size, (0, 0, 0, 0))
+            bg_draw = ImageDraw.Draw(bg_layer)
+            bg_draw.ellipse((bg_pos[0], bg_pos[1],
+                           bg_pos[0] + bg_size,
+                           bg_pos[1] + bg_size),
+                          fill=(255, 255, 255, 255))
+            
+            # 合并所有图层
+            qr_image = Image.alpha_composite(qr_image, bg_layer)
+            qr_image = Image.alpha_composite(qr_image, logo_layer)
+
+        # 保存到内存
+        img_io = io.BytesIO()
+        qr_image.save(img_io, 'PNG')
+        img_io.seek(0)
+        
+        return send_file(img_io, mimetype='image/png')
+
+    except Exception as e:
+        logger.error(f"Error generating QR code: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/compress', methods=['POST'])
 def compress():
     if 'image' not in request.files:
+        logger.error("No file provided")
         return jsonify({'error': 'No file provided'}), 400
     
     file = request.files['image']
     if file.filename == '':
+        logger.error("No file selected")
         return jsonify({'error': 'No file selected'}), 400
     
     if not allowed_file(file.filename):
+        logger.error(f"File type not allowed: {file.filename}")
         return jsonify({'error': 'File type not allowed'}), 400
     
     compression_type = request.form.get('compression_type', 'lossy')
@@ -133,7 +250,27 @@ def compress():
             mimetype='image/jpeg' if compression_type == 'lossy' and (file.filename.lower().endswith('jpg') or file.filename.lower().endswith('jpeg')) else 'image/png'
         )
     except Exception as e:
+        logger.error(f"Failed to compress image: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # 从环境变量获取端口，如果没有设置则使用默认值
+    default_port = int(os.environ.get('PORT', 5000))
+    
+    try:
+        # 检查默认端口是否可用
+        if is_port_in_use(default_port):
+            logger.warning(f"Port {default_port} is in use")
+            port = find_available_port(default_port)
+            logger.info(f"Found available port: {port}")
+        else:
+            port = default_port
+            logger.info(f"Using default port: {port}")
+        
+        # 启动服务器
+        logger.info(f"Starting server on port {port}...")
+        app.run(debug=True, host='0.0.0.0', port=port)
+        
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        raise

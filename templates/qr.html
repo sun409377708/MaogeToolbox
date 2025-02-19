@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二维码生成器 - MaogeToolbox</title>
+    <link href="{{ url_for('static', filename='main.css') }}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient">
+    <header class="header">
+        <nav class="nav-container">
+            <div class="logo">MaogeToolbox</div>
+            <div class="nav-links">
+                <a href="/">图片压缩</a>
+                <a href="/qr" class="active">二维码生成</a>
+                <a href="#" class="disabled">更多工具</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-container">
+        <div class="tool-container">
+            <div class="tool-header">
+                <h1>二维码生成器</h1>
+                <p class="subtitle">支持自定义样式和Logo | 高清晰度</p>
+            </div>
+            
+            <form id="qr-form">
+                <!-- 内容输入 -->
+                <div class="setting-group">
+                    <label class="setting-label" for="content">二维码内容</label>
+                    <div class="setting-controls">
+                        <input type="text" id="content" name="content" required
+                               class="setting-input"
+                               placeholder="输入文本、网址或其他内容">
+                    </div>
+                </div>
+
+                <!-- Logo上传 -->
+                <div class="setting-group">
+                    <label class="setting-label" for="logo">Logo图片（可选）</label>
+                    <div class="setting-controls">
+                        <input type="file" id="logo" name="logo" accept="image/*"
+                               class="setting-input">
+                        <div class="setting-hint">支持PNG、JPG格式，建议使用透明背景的图片</div>
+                    </div>
+                </div>
+
+                <!-- 样式选择 -->
+                <div class="setting-group">
+                    <label class="setting-label" for="style">二维码样式</label>
+                    <div class="setting-controls">
+                        <select id="style" name="style" class="setting-select">
+                            <option value="square">方形（清晰度最高）</option>
+                            <option value="rounded">圆角（更具现代感）</option>
+                            <option value="circle">圆形（独特设计）</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button type="submit" class="compress-button">
+                        生成二维码
+                    </button>
+                    <button type="button" onclick="generateQR(true)" class="compress-button">
+                        快速生成
+                    </button>
+                </div>
+            </form>
+
+            <!-- 预览部分 -->
+            <div id="preview-section" class="preview-container hidden">
+                <div class="preview-box">
+                    <div class="preview-header">生成预览</div>
+                    <div class="preview-content">
+                        <img id="preview-image" class="preview-image" alt="生成的二维码">
+                    </div>
+                    <div class="preview-actions">
+                        <a id="download-btn" class="download-button" download="qrcode.png">
+                            <svg class="download-icon" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 12l-5-5 1.41-1.41L10 9.17l3.59-3.58L15 7l-5 5z"/>
+                                <path d="M4 14h12v2H4z"/>
+                            </svg>
+                            下载二维码
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p> 2025 MaogeToolbox | <a href="#" class="footer-link">关于</a> | <a href="#" class="footer-link">联系我们</a></p>
+    </footer>
+
+    <script>
+        const form = document.getElementById('qr-form');
+        const previewSection = document.getElementById('preview-section');
+        const downloadBtn = document.getElementById('download-btn');
+
+        async function generateQR(isQuick = false) {
+            try {
+                const content = document.getElementById('content').value.trim();
+                if (!content) {
+                    alert('请输入需要生成二维码的内容');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('content', content);
+                formData.append('style', isQuick ? 'square' : document.getElementById('style').value);
+
+                // 处理可选的 logo 上传
+                const logoInput = document.getElementById('logo');
+                if (logoInput && logoInput.files && logoInput.files[0]) {
+                    formData.append('logo', logoInput.files[0]);
+                }
+
+                const response = await fetch('/api/generate-qr', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || '生成二维码失败');
+                }
+
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+
+                // 显示预览
+                previewSection.classList.remove('hidden');
+                const previewImage = document.getElementById('preview-image');
+                previewImage.src = imageUrl;
+                
+                // 更新下载按钮
+                downloadBtn.href = imageUrl;
+                downloadBtn.classList.remove('hidden');
+                
+                // 如果是快速生成，自动触发下载
+                if (isQuick) {
+                    downloadBtn.click();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('生成二维码时发生错误：' + error.message);
+            }
+        }
+
+        // 表单提交
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            generateQR(false);
+        });
+    </script>
+</body>
+</html>
