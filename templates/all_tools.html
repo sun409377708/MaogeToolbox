@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaogeToolbox - 工具箱</title>
+    <link href="{{ url_for('static', filename='main.css') }}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient">
+    <header class="header">
+        <nav class="nav-container">
+            <div class="logo">MaogeToolbox</div>
+            <div class="nav-links">
+                <a href="/compress">图片压缩</a>
+                <a href="/qr">二维码生成</a>
+                <a href="/novel">小说小帮手</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-container">
+        <div class="tools-grid">
+            <a href="/compress" class="tool-card">
+                <div class="tool-icon">🖼️</div>
+                <h2>图片压缩</h2>
+                <p>快速压缩图片，保持清晰度的同时减小文件大小</p>
+            </a>
+            <a href="/qr" class="tool-card">
+                <div class="tool-icon">📱</div>
+                <h2>二维码生成</h2>
+                <p>生成美观的二维码，支持自定义样式和颜色</p>
+            </a>
+            <a href="/novel" class="tool-card">
+                <div class="tool-icon">📖</div>
+                <h2>小说小帮手</h2>
+                <p>分析文章的写作风格、情感和结构，提供改进建议</p>
+            </a>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>© 2025 MaogeToolbox | <a href="#" class="footer-link">关于</a> | <a href="#" class="footer-link">联系我们</a></p>
+    </footer>
+
+    <style>
+    .tools-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .tool-card {
+        background: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        text-align: center;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .tool-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .tool-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .tool-card h2 {
+        margin: 0.5rem 0;
+        color: #1a1a1a;
+    }
+    
+    .tool-card p {
+        color: #666;
+        margin: 0.5rem 0;
+        line-height: 1.5;
+    }
+    </style>
+</body>
+</html>

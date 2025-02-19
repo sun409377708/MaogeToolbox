@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaogeToolbox - 在线工具集</title>
+    <link href="{{ url_for('static', filename='main.css') }}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient">
+    <main class="main-container">
+        <div class="tool-container">
+            <div class="tool-header">
+                <h1>图片压缩</h1>
+                <p class="subtitle">支持 JPG、PNG、GIF 格式 | 最大 16MB</p>
+            </div>
+
+            <!-- 上传区域 -->
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept="image/*" multiple class="file-input" />
+                <div class="upload-content" id="uploadContent">
+                    <div class="upload-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <span class="primary-text">点击或拖拽图片到这里</span>
+                        <span class="secondary-text">支持 JPG、PNG、GIF 格式</span>
+                    </div>
+                </div>
+                <div id="uploadPreview" class="upload-preview hidden">
+                    <div class="preview-header">
+                        <span id="fileName" class="file-name"></span>
+                        <button id="changeFile" class="change-file-btn">
+                            更换图片
+                        </button>
+                    </div>
+                    <div class="preview-image-container">
+                        <img id="imagePreview" class="preview-image" alt="预览图" />
+                        <div class="image-info">
+                            <span id="imageSize" class="image-size"></span>
+                            <span id="imageDimensions" class="image-dimensions"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 压缩设置 -->
+            <div class="settings-container">
+                <div class="setting-group">
+                    <label class="setting-label">压缩方式</label>
+                    <div class="setting-controls">
+                        <select id="compressionType" class="setting-select">
+                            <option value="lossy">有损压缩（更小体积）</option>
+                            <option value="lossless">无损压缩（保持质量）</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-group" id="qualityContainer">
+                    <label class="setting-label">压缩质量</label>
+                    <div class="setting-controls">
+                        <input type="range" id="qualitySlider" min="0" max="100" value="80" class="quality-slider">
+                        <div class="quality-labels">
+                            <span>低</span>
+                            <span>中</span>
+                            <span>高</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 压缩按钮 -->
+            <button id="compressButton" class="compress-button" disabled>
+                开始压缩
+            </button>
+
+            <!-- 预览区域 -->
+            <div class="preview-container hidden" id="previewSection">
+                <div class="preview-box">
+                    <div class="preview-header">原始图片</div>
+                    <div id="originalPreview" class="preview-image"></div>
+                    <div id="originalSize" class="preview-size">大小：-</div>
+                </div>
+                <div class="preview-box">
+                    <div class="preview-header">压缩预览</div>
+                    <div id="compressedPreview" class="preview-image"></div>
+                    <div id="compressedSize" class="preview-size">大小：-</div>
+                </div>
+            </div>
+
+            <!-- 下载区域 -->
+            <div id="downloadSection" class="download-section hidden">
+                <div class="download-info">
+                    <div class="compression-stats">
+                        <span class="stats-label">压缩率：</span>
+                        <span id="compressionRatio" class="stats-value">-</span>
+                    </div>
+                    <div class="size-comparison">
+                        <span class="stats-label">原始大小：</span>
+                        <span id="originalSizeStats" class="stats-value">-</span>
+                        <span class="stats-separator">→</span>
+                        <span class="stats-label">压缩后：</span>
+                        <span id="compressedSizeStats" class="stats-value">-</span>
+                    </div>
+                </div>
+                <button id="downloadButton" class="download-button">
+                    <svg class="download-icon" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 12l-5-5 1.41-1.41L10 9.17l3.59-3.58L15 7l-5 5z"/>
+                        <path d="M4 14h12v2H4z"/>
+                    </svg>
+                    下载压缩后的图片
+                </button>
+            </div>
+
+            <!-- 批量处理进度 -->
+            <div id="batchProgress" class="batch-progress hidden">
+                <h3 class="batch-title">处理进度</h3>
+                <div id="progressList" class="progress-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

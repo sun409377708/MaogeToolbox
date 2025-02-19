@@ -9,6 +9,9 @@ import qrcode
 from qrcode.image.styles.moduledrawers import RoundedModuleDrawer, CircleModuleDrawer
 from qrcode.image.styles.colormasks import RadialGradiantColorMask, SolidFillColorMask
 import sys
+import jieba
+from collections import Counter
+import requests
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -129,9 +132,48 @@ def compress_image(image, compression_type, quality):
     output.seek(0)
     return output
 
+# DeepSeek API 配置
+DEEPSEEK_API_KEY = "sk-9dfa947798e84808a42a351cf41d80c1"
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
+def analyze_with_deepseek(text, analysis_type):
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    prompts = {
+        "style": "请分析以下文本的写作风格，包括语言特点、修辞手法等：",
+        "sentiment": "请分析以下文本的情感色彩和情绪变化：",
+        "structure": "请分析以下文本的结构组织和段落安排："
+    }
+    
+    data = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是一个专业的文学分析助手，请对文本进行分析。"},
+            {"role": "user", "content": f"{prompts[analysis_type]}\n\n{text}"}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1000
+    }
+    
+    try:
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result['choices'][0]['message']['content']
+    except Exception as e:
+        logger.error(f"DeepSeek API error: {str(e)}")
+        return f"分析过程中出现错误：{str(e)}"
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/compress')
+def compress_page():
+    return render_template('compress.html')
 
 @app.route('/qr')
 def qr_page():
@@ -251,6 +293,104 @@ def compress():
         )
     except Exception as e:
         logger.error(f"Failed to compress image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# 小说分析相关路由
+@app.route('/novel')
+def novel():
+    return render_template('novel.html')
+
+@app.route('/api/analyze-style', methods=['POST'])
+def analyze_style():
+    try:
+        text = request.json.get('text', '')
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+            
+        # 使用 DeepSeek API 进行分析
+        analysis = analyze_with_deepseek(text, "style")
+        return jsonify({"result": analysis})
+    except Exception as e:
+        logger.error(f"Error in style analysis: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze-sentiment', methods=['POST'])
+def analyze_sentiment():
+    try:
+        text = request.json.get('text', '')
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+            
+        # 使用 DeepSeek API 进行分析
+        analysis = analyze_with_deepseek(text, "sentiment")
+        return jsonify({"result": analysis})
+    except Exception as e:
+        logger.error(f"Error in sentiment analysis: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze-structure', methods=['POST'])
+def analyze_structure():
+    try:
+        text = request.json.get('text', '')
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+            
+        # 使用 DeepSeek API 进行分析
+        analysis = analyze_with_deepseek(text, "structure")
+        return jsonify({"result": analysis})
+    except Exception as e:
+        logger.error(f"Error in structure analysis: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/analyze', methods=['POST'])
+def analyze_novel():
+    try:
+        data = request.get_json()
+        if not data or 'text' not in data or 'type' not in data:
+            return jsonify({'error': '请提供文本和分析类型'}), 400
+
+        text = data['text']
+        analysis_type = data['type']
+
+        # 构建 prompt
+        prompts = {
+            'style': "请分析以下文本的写作风格，包括语言特点、修辞手法、叙事视角等：\n\n",
+            'sentiment': "请分析以下文本的情感倾向，包括主要情绪、情感变化、情感强度等：\n\n",
+            'structure': "请分析以下文本的结构特点，包括段落组织、情节发展、时空安排等：\n\n"
+        }
+
+        if analysis_type not in prompts:
+            return jsonify({'error': '不支持的分析类型'}), 400
+
+        prompt = prompts[analysis_type] + text
+
+        # 调用 DeepSeek API
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": "你是一个专业的文学分析助手，擅长分析文本的写作风格、情感和结构。请用markdown格式输出分析结果，确保分析专业、深入且易于理解。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7
+            }
+        )
+
+        if response.status_code != 200:
+            return jsonify({'error': 'AI 服务暂时不可用'}), 500
+
+        result = response.json()
+        analysis = result['choices'][0]['message']['content']
+
+        return jsonify({'result': analysis})
+
+    except Exception as e:
+        app.logger.error(f"分析过程出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

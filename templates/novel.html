@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说小帮手 - MaogeToolbox</title>
+    <link href="{{ url_for('static', filename='main.css') }}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/github.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/lib/highlight.min.js"></script>
+    <style>
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1a1a1a;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-link {
+            color: #4b5563;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            color: #1a1a1a;
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-link.active {
+            color: #4f46e5;
+            background: rgba(79, 70, 229, 0.1);
+        }
+
+        .text-input {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            background: white;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        .text-input:hover {
+            border-color: #9ca3af;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1);
+        }
+
+        .settings-group {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .settings-group label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            background: #f3f4f6;
+            transition: all 0.2s;
+        }
+
+        .settings-group label:hover {
+            background: #e5e7eb;
+        }
+
+        .settings-group input[type="radio"] {
+            cursor: pointer;
+        }
+
+        .result-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-section h3 {
+            margin: 0 0 1rem 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .result-content {
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: #4b5563;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #6b7280;
+        }
+
+        .loading-indicator::after {
+            content: "";
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid #e5e7eb;
+            border-top-color: #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .tool-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .tool-title {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+        }
+
+        .tool-description {
+            color: #4b5563;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+
+        .btn-primary {
+            background: #4f46e5;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #4338ca;
+        }
+
+        .btn-primary:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.3);
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Markdown 样式 */
+        .markdown-content {
+            line-height: 1.6;
+            color: #374151;
+        }
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4 {
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .markdown-content p {
+            margin: 1em 0;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 1em 0;
+            padding-left: 2em;
+        }
+
+        .markdown-content li {
+            margin: 0.5em 0;
+        }
+
+        .markdown-content blockquote {
+            margin: 1em 0;
+            padding-left: 1em;
+            border-left: 4px solid #e5e7eb;
+            color: #6b7280;
+        }
+
+        .markdown-content code {
+            padding: 0.2em 0.4em;
+            background-color: #f3f4f6;
+            border-radius: 0.25em;
+            font-size: 0.875em;
+            color: #ef4444;
+        }
+
+        .markdown-content pre {
+            margin: 1em 0;
+            padding: 1em;
+            background-color: #f3f4f6;
+            border-radius: 0.5em;
+            overflow-x: auto;
+        }
+
+        .markdown-content pre code {
+            padding: 0;
+            background-color: transparent;
+            color: inherit;
+        }
+    </style>
+</head>
+<body class="bg-gradient">
+    <div class="tool-container">
+        <h1 class="tool-title">小说小帮手</h1>
+        <p class="tool-description">
+            这是一个强大的小说分析工具。只需粘贴您的小说片段，我们就能帮您分析写作风格、情感倾向和结构特点。
+        </p>
+
+        <div class="mb-6">
+            <textarea id="novelText" class="text-input" placeholder="在这里粘贴您的小说片段..."></textarea>
+        </div>
+
+        <div class="settings-group">
+            <label>
+                <input type="radio" name="analysisType" value="style" checked>
+                写作风格分析
+            </label>
+            <label>
+                <input type="radio" name="analysisType" value="sentiment">
+                情感倾向分析
+            </label>
+            <label>
+                <input type="radio" name="analysisType" value="structure">
+                结构特点分析
+            </label>
+        </div>
+
+        <button onclick="analyzeNovel()" class="btn-primary">
+            开始分析
+        </button>
+
+        <div id="styleResult" class="result-section hidden">
+            <h3>写作风格分析结果</h3>
+            <div class="result-content"></div>
+        </div>
+
+        <div id="sentimentResult" class="result-section hidden">
+            <h3>情感倾向分析结果</h3>
+            <div class="result-content"></div>
+        </div>
+
+        <div id="structureResult" class="result-section hidden">
+            <h3>结构特点分析结果</h3>
+            <div class="result-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // 配置 marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (__) {}
+                }
+                return code;
+            },
+            breaks: true,
+            gfm: true
+        });
+
+        function showLoading(elementId) {
+            const element = document.getElementById(elementId);
+            element.classList.remove('hidden');
+            element.querySelector('.result-content').innerHTML = '<div class="loading-indicator">分析中，请稍候...</div>';
+        }
+
+        function showResult(elementId, result) {
+            const element = document.getElementById(elementId);
+            element.classList.remove('hidden');
+            const htmlContent = marked.parse(result);
+            element.querySelector('.result-content').innerHTML = 
+                `<div class="markdown-content">${htmlContent}</div>`;
+        }
+
+        function hideAllResults() {
+            document.getElementById('styleResult').classList.add('hidden');
+            document.getElementById('sentimentResult').classList.add('hidden');
+            document.getElementById('structureResult').classList.add('hidden');
+        }
+
+        async function analyzeNovel() {
+            const text = document.getElementById('novelText').value.trim();
+            if (!text) {
+                alert('请输入小说片段');
+                return;
+            }
+
+            const analysisType = document.querySelector('input[name="analysisType"]:checked').value;
+            hideAllResults();
+
+            let resultId;
+            switch (analysisType) {
+                case 'style':
+                    resultId = 'styleResult';
+                    break;
+                case 'sentiment':
+                    resultId = 'sentimentResult';
+                    break;
+                case 'structure':
+                    resultId = 'structureResult';
+                    break;
+            }
+
+            showLoading(resultId);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        type: analysisType
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('网络请求失败');
+                }
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                showResult(resultId, data.result);
+            } catch (error) {
+                document.getElementById(resultId).querySelector('.result-content').innerHTML = 
+                    `<div class="text-red-500">分析失败：${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
