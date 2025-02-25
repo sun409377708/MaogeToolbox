@@ -3,17 +3,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const compressionType = document.getElementById('compressionType');
     const qualitySlider = document.getElementById('qualitySlider');
     const compressButton = document.getElementById('compressButton');
-    const originalPreview = document.getElementById('originalPreview');
-    const compressedPreview = document.getElementById('compressedPreview');
-    const originalSize = document.getElementById('originalSize');
-    const compressedSize = document.getElementById('compressedSize');
-    const qualityContainer = document.getElementById('qualityContainer');
-    const batchProgress = document.getElementById('batchProgress');
-    const progressList = document.getElementById('progressList');
-    const downloadSection = document.getElementById('downloadSection');
-    const compressionRatio = document.getElementById('compressionRatio');
-    const originalSizeStats = document.getElementById('originalSizeStats');
-    const compressedSizeStats = document.getElementById('compressedSizeStats');
     const uploadArea = document.getElementById('uploadArea');
     const uploadContent = document.getElementById('uploadContent');
     const uploadPreview = document.getElementById('uploadPreview');
@@ -22,37 +11,162 @@ document.addEventListener('DOMContentLoaded', function() {
     const imageSize = document.getElementById('imageSize');
     const imageDimensions = document.getElementById('imageDimensions');
     const changeFileBtn = document.getElementById('changeFile');
+    const downloadSection = document.getElementById('downloadSection');
+    const compressionRatio = document.getElementById('compressionRatio');
+    const originalSizeStats = document.getElementById('originalSizeStats');
+    const compressedSizeStats = document.getElementById('compressedSizeStats');
 
     let currentFile = null;
-    let files = [];
-    let compressedImageData = null;
+    let compressedBlob = null;
 
+    // 文件输入变化处理
+    fileInput.addEventListener('change', handleFiles);
+
+    // 压缩类型变化处理
     compressionType.addEventListener('change', function() {
-        qualityContainer.style.display = 
-            this.value === 'lossy' ? 'block' : 'none';
+        const qualityContainer = document.getElementById('qualityContainer');
+        qualityContainer.style.display = this.value === 'lossy' ? 'block' : 'none';
     });
 
-    fileInput.addEventListener('change', function(e) {
-        files = Array.from(e.target.files);
-        if (files.length > 0) {
-            currentFile = files[0];
-            updatePreview(currentFile, originalPreview, originalSize);
-            compressButton.disabled = false;
-            // 清空压缩预览
-            compressedPreview.innerHTML = '<p class="text-gray-500">等待压缩</p>';
-            compressedSize.textContent = '大小：-';
+    // 压缩按钮点击处理
+    compressButton.addEventListener('click', async function() {
+        if (!currentFile) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            formData.append('compression_type', compressionType.value);
+            formData.append('quality', qualitySlider.value);
+
+            const response = await fetch('/api/compress', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || '压缩失败');
+            }
+
+            compressedBlob = await response.blob();
+            
+            // 计算并显示压缩信息
+            const ratio = ((1 - compressedBlob.size / currentFile.size) * 100).toFixed(1);
+            compressionRatio.textContent = ratio + '%';
+            originalSizeStats.textContent = formatFileSize(currentFile.size);
+            compressedSizeStats.textContent = formatFileSize(compressedBlob.size);
+            
+            // 显示下载区域
+            downloadSection.classList.remove('hidden');
+            
+        } catch (error) {
+            console.error('压缩错误:', error);
+            alert('压缩失败: ' + error.message);
         }
     });
 
-    function updatePreview(file, previewElement, sizeElement) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            previewElement.innerHTML = `<img src="${e.target.result}" class="max-h-full max-w-full object-contain">`;
-            sizeElement.textContent = `大小：${formatFileSize(file.size)}`;
-        };
-        reader.readAsDataURL(file);
+    // 下载按钮点击处理
+    document.getElementById('downloadButton').addEventListener('click', function() {
+        if (!compressedBlob) return;
+        
+        const url = URL.createObjectURL(compressedBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `compressed_${currentFile.name}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    });
+
+    // 文件处理函数
+    async function handleFiles(e) {
+        const selectedFiles = e.target.files || e.dataTransfer.files;
+        if (!selectedFiles.length) return;
+
+        const file = selectedFiles[0]; // 只处理第一个文件
+        
+        // 检查文件类型
+        const isImage = file.type.startsWith('image/') || 
+                       file.name.toLowerCase().endsWith('.heic');
+                       
+        if (!isImage) {
+            alert('请上传图片文件');
+            return;
+        }
+
+        try {
+            // 更新UI显示
+            uploadContent.classList.add('hidden');
+            uploadPreview.classList.remove('hidden');
+            downloadSection.classList.add('hidden'); // 隐藏下载区域
+            
+            // 显示文件名和大小
+            fileName.textContent = file.name;
+            imageSize.textContent = formatFileSize(file.size);
+            
+            // 预览图片
+            await previewImage(file);
+            
+            // 启用压缩按钮
+            compressButton.disabled = false;
+            
+            // 保存当前文件
+            currentFile = file;
+            compressedBlob = null; // 清除之前的压缩结果
+        } catch (error) {
+            console.error('处理文件错误:', error);
+            alert('处理文件失败: ' + error.message);
+        }
     }
 
+    // 图片预览函数
+    async function previewImage(file) {
+        try {
+            let imageUrl;
+            
+            if (file.name.toLowerCase().endsWith('.heic')) {
+                // HEIC格式使用服务器端预览
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch('/api/preview', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || '预览失败');
+                }
+                
+                const blob = await response.blob();
+                imageUrl = URL.createObjectURL(blob);
+            } else {
+                // 其他格式直接预览
+                imageUrl = URL.createObjectURL(file);
+            }
+            
+            // 加载图片并获取尺寸
+            await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    imagePreview.src = imageUrl;
+                    imageDimensions.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+                    resolve();
+                };
+                img.onerror = () => reject(new Error('加载图片失败'));
+                img.src = imageUrl;
+            });
+        } catch (error) {
+            console.error('预览错误:', error);
+            imagePreview.src = '';
+            imageDimensions.textContent = '';
+            throw error;
+        }
+    }
+
+    // 文件大小格式化
     function formatFileSize(bytes) {
         if (bytes === 0) return '0 B';
         const k = 1024;
@@ -61,144 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    function calculateCompressionRatio(originalSize, compressedSize) {
-        return ((1 - compressedSize / originalSize) * 100).toFixed(1) + '%';
-    }
-
-    function showDownloadSection(originalSize, compressedSize) {
-        compressionRatio.textContent = calculateCompressionRatio(originalSize, compressedSize);
-        originalSizeStats.textContent = formatFileSize(originalSize);
-        compressedSizeStats.textContent = formatFileSize(compressedSize);
-
-        downloadSection.classList.remove('hidden');
-    }
-
-    compressButton.addEventListener('click', async function() {
-        if (files.length === 0) return;
-
-        batchProgress.classList.remove('hidden');
-        progressList.innerHTML = '';
-
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const progressItem = createProgressItem(file.name);
-            progressList.appendChild(progressItem);
-
-            try {
-                const compressedBlob = await compressFile(file, progressItem);
-                if (file === currentFile) {
-                    // 更新压缩预览
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        compressedPreview.innerHTML = `<img src="${e.target.result}" class="max-h-full max-w-full object-contain">`;
-                        compressedSize.textContent = `大小：${formatFileSize(compressedBlob.size)}`;
-                    };
-                    reader.readAsDataURL(compressedBlob);
-                }
-            } catch (error) {
-                updateProgressItemStatus(progressItem, 'error', error.message);
-            }
-        }
-    });
-
-    function createProgressItem(filename) {
-        const div = document.createElement('div');
-        div.className = 'flex items-center justify-between p-2 bg-gray-50 rounded';
-        div.innerHTML = `
-            <span class="text-sm">${filename}</span>
-            <span class="text-sm text-gray-500">处理中...</span>
-        `;
-        return div;
-    }
-
-    function updateProgressItemStatus(item, status, message) {
-        const statusSpan = item.querySelector('span:last-child');
-        statusSpan.textContent = message;
-        if (status === 'error') {
-            statusSpan.classList.add('text-red-500');
-        } else if (status === 'success') {
-            statusSpan.classList.add('text-green-500');
-        }
-    }
-
-    async function compressFile(file, progressItem) {
-        const formData = new FormData();
-        formData.append('image', file);  
-        formData.append('compression_type', compressionType.value);
-        formData.append('quality', qualitySlider.value);
-
-        const response = await fetch('/compress', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || '压缩失败');
-        }
-
-        const blob = await response.blob();
-        compressedImageData = blob;  
-        
-        // 显示下载区域
-        showDownloadSection(file.size, blob.size);
-        
-        updateProgressItemStatus(progressItem, 'success', '完成');
-        return blob;
-    }
-
-    async function compressImage(file) {
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('quality', qualitySlider.value);
-        formData.append('compression_type', document.querySelector('input[name="compression_type"]:checked').value);
-
-        try {
-            const response = await fetch('/compress', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('压缩失败');
-            }
-
-            const blob = await response.blob();
-            compressedImageData = blob;
-            
-            // 显示下载区域
-            showDownloadSection(file.size, blob.size);
-            
-            // 预览压缩后的图片
-            const compressedImageUrl = URL.createObjectURL(blob);
-            document.getElementById('compressedPreview').src = compressedImageUrl;
-            
-            return compressedImageUrl;
-        } catch (error) {
-            console.error('压缩错误:', error);
-            alert('图片压缩失败，请重试');
-        }
-    }
-
-    // 添加下载按钮事件监听
-    document.getElementById('downloadButton').addEventListener('click', () => {
-        if (compressedImageData) {
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(compressedImageData);
-            const originalFileName = document.querySelector('input[type="file"]').files[0].name;
-            const extension = originalFileName.split('.').pop();
-            const newFileName = `compressed_${originalFileName.replace(`.${extension}`, '')}.${extension}`;
-            
-            link.href = url;
-            link.download = newFileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }
-    });
-
-    // 拖拽相关事件
+    // 拖放处理
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         uploadArea.addEventListener(eventName, preventDefaults, false);
     });
@@ -208,71 +185,23 @@ document.addEventListener('DOMContentLoaded', function() {
         e.stopPropagation();
     }
 
+    // 拖放高亮效果
     ['dragenter', 'dragover'].forEach(eventName => {
-        uploadArea.addEventListener(eventName, highlight, false);
+        uploadArea.addEventListener(eventName, () => {
+            uploadArea.classList.add('drag-over');
+        }, false);
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
-        uploadArea.addEventListener(eventName, unhighlight, false);
+        uploadArea.addEventListener(eventName, () => {
+            uploadArea.classList.remove('drag-over');
+        }, false);
     });
 
-    function highlight() {
-        uploadArea.classList.add('drag-over');
-    }
-
-    function unhighlight() {
-        uploadArea.classList.remove('drag-over');
-    }
-
-    // 处理文件上传
-    uploadArea.addEventListener('drop', handleDrop, false);
-    fileInput.addEventListener('change', handleFiles, false);
-
-    function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        handleFiles({ target: { files } });
-    }
-
-    async function handleFiles(e) {
-        const files = [...e.target.files];
-        if (files.length === 0) return;
-
-        const file = files[0]; // 只处理第一个文件
-        if (!file.type.startsWith('image/')) {
-            alert('请上传图片文件');
-            return;
-        }
-
-        // 显示文件信息
-        fileName.textContent = file.name;
-        imageSize.textContent = formatFileSize(file.size);
-
-        // 创建预览
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            // 预览图片
-            imagePreview.src = e.target.result;
-            
-            // 获取图片尺寸
-            const img = new Image();
-            img.onload = function() {
-                imageDimensions.textContent = `${img.width} × ${img.height}`;
-            };
-            img.src = e.target.result;
-
-            // 显示预览区域
-            uploadContent.classList.add('hidden');
-            uploadPreview.classList.remove('hidden');
-            
-            // 启用压缩按钮
-            compressButton.disabled = false;
-        };
-        reader.readAsDataURL(file);
-
-        // 保存当前文件
-        currentFile = file;
-    }
+    // 处理拖放
+    uploadArea.addEventListener('drop', (e) => {
+        handleFiles(e);
+    }, false);
 
     // 更换文件按钮
     changeFileBtn.addEventListener('click', () => {

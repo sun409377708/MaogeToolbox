@@ -1,17 +1,27 @@
 import os
 import socket
 import logging
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, url_for
 from PIL import Image, ImageDraw
+import pillow_heif
 import io
 from werkzeug.utils import secure_filename
 import qrcode
+from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import RoundedModuleDrawer, CircleModuleDrawer
 from qrcode.image.styles.colormasks import RadialGradiantColorMask, SolidFillColorMask
 import sys
 import jieba
 from collections import Counter
 import requests
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +31,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'heic', 'HEIC'}
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -44,93 +54,63 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def compress_image(image, compression_type, quality):
-    img = Image.open(image)
-    original_format = img.format.lower()
-    
-    # 获取原始图片的尺寸
-    width, height = img.size
-    
-    # 如果图片尺寸大于2000像素，按比例缩小
-    max_dimension = 2000
-    if width > max_dimension or height > max_dimension:
-        if width > height:
-            new_width = max_dimension
-            new_height = int(height * (max_dimension / width))
-        else:
-            new_height = max_dimension
-            new_width = int(width * (max_dimension / height))
-        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
-    # 转换颜色模式
-    if compression_type == 'lossy':
-        if img.mode in ['RGBA', 'P']:
-            # 如果有透明通道，先在白色背景上合成
-            if img.mode == 'RGBA':
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[3])
-                img = background
+    """压缩图片"""
+    try:
+        # 如果是HEIC格式，先转换为PIL Image
+        if isinstance(image, str) and image.lower().endswith(('.heic', '.HEIC')):
+            try:
+                # 使用新版本的 pillow-heif 处理方式
+                heif_image = pillow_heif.read_heif(image)
+                image = Image.frombytes(
+                    heif_image.mode, 
+                    heif_image.size, 
+                    heif_image.data,
+                    "raw",
+                )
+            except Exception as e:
+                logger.error(f"Error converting HEIC: {str(e)}")
+                raise
+        elif not isinstance(image, Image.Image):
+            image = Image.open(image)
+
+        # 确保图片是RGB模式
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # 获取原始图片的尺寸
+        width, height = image.size
+        
+        # 如果图片尺寸大于2000像素，按比例缩小
+        max_dimension = 2000
+        if width > max_dimension or height > max_dimension:
+            if width > height:
+                new_width = max_dimension
+                new_height = int(height * (max_dimension / width))
             else:
-                img = img.convert('RGB')
-    
-    output = io.BytesIO()
-    
-    if compression_type == 'lossy':
-        # JPEG压缩
-        try:
-            # 使用渐进式JPEG
-            img.save(output, format='JPEG', quality=quality, optimize=True, progressive=True)
-        except Exception as e:
-            # 如果JPEG压缩失败，尝试PNG压缩
-            img.save(output, format='PNG', optimize=True)
-    else:  # lossless
-        if original_format == 'png':
-            # PNG优化
-            img.save(output, format='PNG', optimize=True, compress_level=9)
-        elif original_format in ['jpeg', 'jpg']:
-            # 对于JPEG，尝试无损的PNG压缩
-            img.save(output, format='PNG', optimize=True, compress_level=9)
-        else:
-            # 其他格式使用原格式优化
-            img.save(output, format=img.format, optimize=True)
-    
-    # 检查压缩效果
-    output.seek(0, io.SEEK_END)
-    compressed_size = output.tell()
-    image.seek(0, io.SEEK_END)
-    original_size = image.tell()
-    
-    # 如果压缩效果不理想（压缩率小于5%），尝试其他压缩方法
-    if compressed_size > original_size * 0.95:
-        image.seek(0)
-        img = Image.open(image)
+                new_height = max_dimension
+                new_width = int(width * (max_dimension / height))
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
-        # 尝试不同的压缩策略
         output = io.BytesIO()
+        
         if compression_type == 'lossy':
-            # 降低质量
-            adjusted_quality = max(quality - 10, 30)  # 不低于30
-            img.save(output, format='JPEG', quality=adjusted_quality, optimize=True, progressive=True)
-        else:
-            # 对于无损压缩，尝试转换为优化的PNG
-            img.save(output, format='PNG', optimize=True, compress_level=9)
+            # JPEG压缩
+            try:
+                # 使用渐进式JPEG
+                image.save(output, format='JPEG', quality=quality, optimize=True, progressive=True)
+            except Exception as e:
+                logger.error(f"JPEG compression failed: {str(e)}, falling back to PNG")
+                # 如果JPEG压缩失败，尝试PNG压缩
+                image.save(output, format='PNG', optimize=True)
+        else:  # lossless
+            # 无损压缩统一使用PNG
+            image.save(output, format='PNG', optimize=True, compress_level=9)
         
-        # 再次检查大小
-        output.seek(0, io.SEEK_END)
-        new_compressed_size = output.tell()
-        
-        # 如果新的压缩效果更好，使用新的结果
-        if new_compressed_size < compressed_size:
-            compressed_size = new_compressed_size
-            output.seek(0)
-            return output
-    
-    # 如果压缩后仍然变大，返回原图
-    if compressed_size >= original_size:
-        image.seek(0)
-        return image
-    
-    output.seek(0)
-    return output
+        output.seek(0)
+        return output
+    except Exception as e:
+        logger.error(f"Error processing image: {str(e)}")
+        raise
 
 # DeepSeek API 配置
 DEEPSEEK_API_KEY = "sk-9dfa947798e84808a42a351cf41d80c1"
@@ -171,6 +151,10 @@ def analyze_with_deepseek(text, analysis_type):
 def index():
     return render_template('index.html')
 
+@app.route('/all_tools')
+def all_tools():
+    return render_template('all_tools.html')
+
 @app.route('/compress')
 def compress_page():
     return render_template('compress.html')
@@ -178,6 +162,14 @@ def compress_page():
 @app.route('/qr')
 def qr_page():
     return render_template('qr.html')
+
+@app.route('/novel')
+def novel():
+    return render_template('novel.html')
+
+@app.route('/screenshot')
+def screenshot_page():
+    return render_template('screenshot.html')
 
 @app.route('/api/generate-qr', methods=['POST'])
 def generate_qr():
@@ -189,7 +181,7 @@ def generate_qr():
         if not content:
             return jsonify({'error': '请输入内容'}), 400
 
-        # 创建QR码，使用最高纠错级别
+        # 创建基本的QR码配置
         qr = qrcode.QRCode(
             version=None,  # 自动选择最小尺寸
             error_correction=qrcode.constants.ERROR_CORRECT_H,  # 最高纠错级别
@@ -201,11 +193,15 @@ def generate_qr():
 
         # 设置样式
         if style == 'rounded':
-            qr_image = qr.make_image(image_factory=qrcode.image.PilImage,
-                                   module_drawer=RoundedModuleDrawer())
+            qr_image = qr.make_image(
+                image_factory=StyledPilImage,
+                module_drawer=RoundedModuleDrawer(radius_ratio=0.8)
+            )
         elif style == 'circle':
-            qr_image = qr.make_image(image_factory=qrcode.image.PilImage,
-                                   module_drawer=CircleModuleDrawer())
+            qr_image = qr.make_image(
+                image_factory=StyledPilImage,
+                module_drawer=CircleModuleDrawer()
+            )
         else:
             qr_image = qr.make_image(fill_color="black", back_color="white")
 
@@ -263,28 +259,34 @@ def generate_qr():
 
     except Exception as e:
         logger.error(f"Error generating QR code: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f"生成二维码时发生错误：{str(e)}"}), 500
 
-@app.route('/compress', methods=['POST'])
+@app.route('/api/compress', methods=['POST'])
 def compress():
-    if 'image' not in request.files:
-        logger.error("No file provided")
+    if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
-    file = request.files['image']
+    file = request.files['file']
     if file.filename == '':
-        logger.error("No file selected")
         return jsonify({'error': 'No file selected'}), 400
     
     if not allowed_file(file.filename):
-        logger.error(f"File type not allowed: {file.filename}")
         return jsonify({'error': 'File type not allowed'}), 400
     
     compression_type = request.form.get('compression_type', 'lossy')
     quality = int(request.form.get('quality', 50))
     
     try:
-        compressed = compress_image(file, compression_type, quality)
+        # 保存上传的文件到临时位置
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        file.save(temp_path)
+        
+        # 压缩图片
+        compressed = compress_image(temp_path, compression_type, quality)
+        
+        # 删除临时文件
+        os.remove(temp_path)
+        
         return send_file(
             compressed,
             as_attachment=True,
@@ -293,13 +295,122 @@ def compress():
         )
     except Exception as e:
         logger.error(f"Failed to compress image: {e}")
+        # 确保临时文件被删除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/preview', methods=['POST'])
+def preview():
+    """预览图片，如果是HEIC格式会转换为JPEG"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    try:
+        # 保存上传的文件到临时位置
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        file.save(temp_path)
+        
+        # 如果是HEIC格式，转换为JPEG
+        if file.filename.lower().endswith(('.heic', '.HEIC')):
+            heif_file = pillow_heif.read_heif(temp_path)
+            image = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw",
+            )
+            
+            # 转换为RGB模式
+            if image.mode in ('RGBA', 'P'):
+                image = image.convert('RGB')
+            
+            # 将转换后的图片保存到内存中
+            output = io.BytesIO()
+            image.save(output, format='JPEG', quality=85)
+            output.seek(0)
+            
+            # 删除临时文件
+            os.remove(temp_path)
+            
+            return send_file(
+                output,
+                mimetype='image/jpeg'
+            )
+        else:
+            # 非HEIC格式直接返回
+            return send_file(temp_path)
+    except Exception as e:
+        logger.error(f"Failed to preview image: {e}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({'error': str(e)}), 500
+
+def init_driver():
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.binary_location = '/usr/bin/chromium'
+    service = Service('/usr/bin/chromedriver')
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    return driver
+
+@app.route('/api/screenshot', methods=['POST'])
+def take_screenshot():
+    try:
+        url = request.json.get('url')
+        if not url:
+            return jsonify({'error': '请提供URL'}), 400
+
+        driver = init_driver()
+        try:
+            # 访问页面
+            driver.get(url)
+            
+            # 等待页面加载完成
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # 等待一下以确保动态内容加载完成
+            time.sleep(2)
+            
+            # 获取页面实际高度
+            height = driver.execute_script("return Math.max("
+                "document.body.scrollHeight, document.documentElement.scrollHeight,"
+                "document.body.offsetHeight, document.documentElement.offsetHeight,"
+                "document.body.clientHeight, document.documentElement.clientHeight);")
+            
+            # 调整窗口大小以适应内容
+            driver.set_window_size(1280, height)
+            
+            # 生成截图
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'screenshot_{timestamp}.png'
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            
+            driver.save_screenshot(filepath)
+            
+            return jsonify({
+                'message': '截图成功',
+                'filename': filename,
+                'url': url_for('download_file', filename=filename)
+            })
+            
+        finally:
+            driver.quit()
+
+    except Exception as e:
+        app.logger.error(f"截图出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # 小说分析相关路由
-@app.route('/novel')
-def novel():
-    return render_template('novel.html')
-
 @app.route('/api/analyze-style', methods=['POST'])
 def analyze_style():
     try:
@@ -393,24 +504,15 @@ def analyze_novel():
         app.logger.error(f"分析过程出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename), as_attachment=True)
+
 if __name__ == '__main__':
-    # 从环境变量获取端口，如果没有设置则使用默认值
-    default_port = int(os.environ.get('PORT', 5000))
-    
+    port = 8000
     try:
-        # 检查默认端口是否可用
-        if is_port_in_use(default_port):
-            logger.warning(f"Port {default_port} is in use")
-            port = find_available_port(default_port)
-            logger.info(f"Found available port: {port}")
-        else:
-            port = default_port
-            logger.info(f"Using default port: {port}")
-        
-        # 启动服务器
-        logger.info(f"Starting server on port {port}...")
         app.run(debug=True, host='0.0.0.0', port=port)
-        
     except Exception as e:
-        logger.error(f"Failed to start server: {e}")
+        logger.error(f"Failed to start server on port {port}: {e}")
+        logger.error("Please make sure port 8000 is available")
         raise

@@ -54,6 +54,10 @@ ssh $SERVER "bash -s" << 'ENDSSH'
     sudo yum update -y
     sudo yum install -y python3-devel gcc nginx
     sudo yum groupinstall -y "Development Tools"
+    
+    # 安装 Pillow 依赖
+    echo "安装 Pillow 依赖..."
+    sudo yum install -y libjpeg-devel zlib-devel freetype-devel
 
     # 进入项目目录
     cd /var/www/MaogeToolbox

@@ -109,8 +109,8 @@
                 });
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || '生成二维码失败');
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '生成二维码失败');
                 }
 
                 const blob = await response.blob();
@@ -123,6 +123,7 @@
                 
                 // 更新下载按钮
                 downloadBtn.href = imageUrl;
+                downloadBtn.download = 'qrcode.png';  // 确保设置下载文件名
                 downloadBtn.classList.remove('hidden');
                 
                 // 如果是快速生成，自动触发下载
@@ -131,7 +132,7 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('生成二维码时发生错误：' + error.message);
+                alert(error.message || '生成二维码时发生错误');
             }
         }
 

@@ -20,10 +20,10 @@ accesslog = '/var/log/gunicorn/access.log'
 errorlog = '/var/log/gunicorn/error.log'
 
 # 日志级别
-loglevel = 'info'
+loglevel = 'debug'
 
-# 后台运行
-daemon = True
+# 不要在 daemon 模式下运行，因为我们使用 systemd 管理
+daemon = False
 
 # 超时时间
 timeout = 30
