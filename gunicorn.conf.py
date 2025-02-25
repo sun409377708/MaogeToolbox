@@ -1,7 +1,13 @@
 import multiprocessing
+import os
+
+# 创建日志目录
+log_dir = '/var/log/gunicorn'
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
 
 # 绑定的ip与端口
-bind = "127.0.0.1:5001"
+bind = "0.0.0.0:5001"
 
 # 工作进程数
 workers = multiprocessing.cpu_count() * 2 + 1
@@ -22,14 +28,19 @@ errorlog = '/var/log/gunicorn/error.log'
 # 日志级别
 loglevel = 'debug'
 
+# 超时设置
+timeout = 120
+keepalive = 2
+
+# 重启设置
+max_requests = 2000
+max_requests_jitter = 400
+
+# 工作目录
+chdir = '/var/www/MaogeToolbox'
+
 # 不要在 daemon 模式下运行，因为我们使用 systemd 管理
 daemon = False
-
-# 超时时间
-timeout = 30
-
-# 重启间隔
-graceful_timeout = 30
 
 # 环境变量
 raw_env = [

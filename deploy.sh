@@ -52,47 +52,83 @@ ssh $SERVER "bash -s" << 'ENDSSH'
     # 安装系统依赖
     echo "更新系统包..."
     sudo yum update -y
-    sudo yum install -y python3-devel gcc nginx
-    sudo yum groupinstall -y "Development Tools"
+    sudo yum install -y epel-release
     
-    # 安装 Pillow 依赖
-    echo "安装 Pillow 依赖..."
-    sudo yum install -y libjpeg-devel zlib-devel freetype-devel
+    # 安装 Nginx
+    echo "安装 Nginx..."
+    sudo yum install -y nginx
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+    
+    # 安装 Python 3.9
+    echo "安装 Python 3.9..."
+    sudo yum install -y gcc openssl-devel bzip2-devel libffi-devel
+    sudo yum install -y python39 python39-devel
+    
+    # 安装其他系统依赖
+    echo "安装系统依赖..."
+    for pkg in libjpeg-devel \
+        zlib-devel \
+        freetype-devel \
+        libffi-devel \
+        cairo-devel \
+        pango-devel \
+        libpng-devel \
+        libtiff-devel \
+        openssl-devel \
+        lcms2-devel \
+        openjpeg2-devel \
+        harfbuzz-devel \
+        fribidi-devel \
+        libraqm-devel \
+        libxml2-devel \
+        libxslt-devel; do
+        echo "安装 $pkg..."
+        sudo yum install -y $pkg || echo "警告: $pkg 安装失败，继续安装其他包..."
+    done
 
     # 进入项目目录
     cd /var/www/MaogeToolbox
 
     # 创建并激活虚拟环境
     echo "设置 Python 虚拟环境..."
-    python3 -m venv venv
+    python3.9 -m venv venv
     source venv/bin/activate
+
+    # 升级 pip
+    echo "升级 pip..."
+    python3.9 -m pip install --upgrade pip setuptools wheel
 
     # 配置 pip 使用国内镜像
     echo "配置 pip 镜像..."
     pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 
-    # 安装依赖（带重试机制）
+    # 安装依赖（带重试机制和详细日志）
     echo "安装 Python 依赖..."
     max_retries=3
     retry_count=0
     while [ $retry_count -lt $max_retries ]; do
-        if pip install -r requirements.txt; then
+        if pip install -v -r requirements.txt 2>&1 | tee pip_install.log; then
             break
         fi
         retry_count=$((retry_count + 1))
         echo "依赖安装失败，尝试重试 ($retry_count/$max_retries)..."
+        echo "错误日志："
+        tail -n 50 pip_install.log
         sleep 5
     done
     if [ $retry_count -eq $max_retries ]; then
         echo "依赖安装失败，已达到最大重试次数"
+        echo "完整错误日志："
+        cat pip_install.log
         exit 1
     fi
 
     # 验证依赖安装
     echo "验证依赖安装..."
-    python3 -c "import jieba" || { echo "jieba 模块导入失败"; exit 1; }
-    python3 -c "import flask" || { echo "flask 模块导入失败"; exit 1; }
-    python3 -c "import gunicorn" || { echo "gunicorn 模块导入失败"; exit 1; }
+    python3.9 -c "import jieba" || { echo "jieba 模块导入失败"; exit 1; }
+    python3.9 -c "import flask" || { echo "flask 模块导入失败"; exit 1; }
+    python3.9 -c "import gunicorn" || { echo "gunicorn 模块导入失败"; exit 1; }
 
     # 清理旧的 Nginx 配置
     echo "配置 Nginx..."
@@ -105,35 +141,61 @@ ssh $SERVER "bash -s" << 'ENDSSH'
     sudo nginx -t || { echo "Nginx 配置测试失败"; exit 1; }
     sudo systemctl restart nginx
 
-    # 创建日志目录
+    # 设置项目目录权限
+    echo "设置目录权限..."
+    sudo chown -R root:root /var/www/MaogeToolbox
+    sudo chmod -R 755 /var/www/MaogeToolbox
+    sudo chmod -R 777 /var/www/MaogeToolbox/uploads  # 确保上传目录可写
+
+    # 确保日志目录存在并设置权限
     echo "设置日志目录..."
     sudo mkdir -p /var/log/gunicorn
     sudo chown -R root:root /var/log/gunicorn
-
-    # 确保上传目录存在并设置权限
-    echo "设置上传目录..."
-    mkdir -p uploads
-    chmod 755 uploads
-
-    # 停止旧的 Gunicorn 进程
-    echo "重启 Gunicorn..."
-    pkill gunicorn || true
+    sudo chmod -R 755 /var/log/gunicorn
 
     # 配置 Gunicorn 系统服务
+    echo "配置 Gunicorn 服务..."
     sudo cp gunicorn.service /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable gunicorn
     sudo systemctl restart gunicorn
+    sleep 5  # 等待服务启动
+
+    # 检查 Gunicorn 状态
+    echo "检查 Gunicorn 状态..."
+    sudo systemctl status gunicorn
+    sudo journalctl -u gunicorn --no-pager -n 50
 
     # 验证服务状态
     echo "验证服务状态..."
-    sudo systemctl is-active --quiet nginx || { echo "Nginx 服务未运行"; exit 1; }
-    sudo systemctl is-active --quiet gunicorn || { echo "Gunicorn 服务未运行"; exit 1; }
+    if ! sudo systemctl is-active --quiet nginx; then
+        echo "Nginx 服务未运行"
+        sudo systemctl status nginx
+        exit 1
+    fi
+
+    if ! sudo systemctl is-active --quiet gunicorn; then
+        echo "Gunicorn 服务未运行"
+        sudo systemctl status gunicorn
+        sudo journalctl -u gunicorn --no-pager -n 50
+        exit 1
+    fi
 
     # 检查端口
     echo "检查端口..."
-    netstat -tlpn | grep -q ':80' || { echo "Nginx 端口 (80) 未监听"; exit 1; }
-    netstat -tlpn | grep -q ':5001' || { echo "Gunicorn 端口 (5001) 未监听"; exit 1; }
+    if ! netstat -tlpn | grep -q ':80'; then
+        echo "Nginx 端口 (80) 未监听"
+        sudo systemctl status nginx
+        exit 1
+    fi
+
+    if ! netstat -tlpn | grep -q ':5001'; then
+        echo "Gunicorn 端口 (5001) 未监听"
+        sudo systemctl status gunicorn
+        sudo journalctl -u gunicorn --no-pager -n 50
+        sudo netstat -tlpn
+        exit 1
+    fi
 
     echo "=== 服务器端部署完成 ==="
 ENDSSH

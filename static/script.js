@@ -43,9 +43,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: formData
             });
 
+            // 检查响应的 Content-Type
+            const contentType = response.headers.get('content-type');
+            
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || '压缩失败');
+                if (contentType && contentType.includes('application/json')) {
+                    const error = await response.json();
+                    throw new Error(error.error || '压缩失败');
+                } else {
+                    throw new Error('压缩失败: ' + response.statusText);
+                }
+            }
+
+            // 如果响应成功，检查是否是图片
+            if (!contentType || !contentType.includes('image/')) {
+                throw new Error('服务器返回了无效的数据类型');
             }
 
             compressedBlob = await response.blob();

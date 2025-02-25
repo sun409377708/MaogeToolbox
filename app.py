@@ -24,18 +24,34 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# 配置错误处理
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({'error': 'File too large'}), 413
+
+# 配置上传文件夹
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# 允许的文件扩展名
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'heic', 'heif'}
+
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
-
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'heic', 'HEIC'}
-
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-    logger.info(f"Created upload directory: {app.config['UPLOAD_FOLDER']}")
 
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -263,41 +279,55 @@ def generate_qr():
 
 @app.route('/api/compress', methods=['POST'])
 def compress():
+    logger.debug("Received compression request")
     if 'file' not in request.files:
+        logger.error("No file in request")
         return jsonify({'error': 'No file provided'}), 400
     
     file = request.files['file']
     if file.filename == '':
+        logger.error("Empty filename")
         return jsonify({'error': 'No file selected'}), 400
     
     if not allowed_file(file.filename):
+        logger.error(f"File type not allowed: {file.filename}")
         return jsonify({'error': 'File type not allowed'}), 400
     
     compression_type = request.form.get('compression_type', 'lossy')
     quality = int(request.form.get('quality', 50))
     
+    logger.debug(f"Processing file: {file.filename}, type: {compression_type}, quality: {quality}")
+    
+    temp_path = None
     try:
-        # 保存上传的文件到临时位置
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        logger.debug(f"Saving file to: {temp_path}")
         file.save(temp_path)
         
-        # 压缩图片
-        compressed = compress_image(temp_path, compression_type, quality)
+        if not os.path.exists(temp_path):
+            logger.error(f"Failed to save file to {temp_path}")
+            return jsonify({'error': 'Failed to save uploaded file'}), 500
         
-        # 删除临时文件
+        logger.debug("Starting image compression")
+        compressed = compress_image(temp_path, compression_type, quality)
+        logger.debug("Compression completed")
+        
         os.remove(temp_path)
         
+        mimetype = 'image/jpeg' if compression_type == 'lossy' else 'image/png'
         return send_file(
             compressed,
             as_attachment=True,
             download_name=f'compressed_{secure_filename(file.filename)}',
-            mimetype='image/jpeg' if compression_type == 'lossy' and (file.filename.lower().endswith('jpg') or file.filename.lower().endswith('jpeg')) else 'image/png'
+            mimetype=mimetype
         )
     except Exception as e:
-        logger.error(f"Failed to compress image: {e}")
-        # 确保临时文件被删除
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        logger.error(f"Failed to compress image: {str(e)}", exc_info=True)
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up temporary file: {str(cleanup_error)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/preview', methods=['POST'])
